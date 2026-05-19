@@ -14,7 +14,80 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      documents: {
+        Row: {
+          created_at: string
+          dept: string | null
+          doc_date: string | null
+          downloaded: boolean
+          file_count: number
+          id: string
+          prdn_dt: string | null
+          prdn_nst_regist_no: string | null
+          search_id: string
+          title: string | null
+        }
+        Insert: {
+          created_at?: string
+          dept?: string | null
+          doc_date?: string | null
+          downloaded?: boolean
+          file_count?: number
+          id?: string
+          prdn_dt?: string | null
+          prdn_nst_regist_no?: string | null
+          search_id: string
+          title?: string | null
+        }
+        Update: {
+          created_at?: string
+          dept?: string | null
+          doc_date?: string | null
+          downloaded?: boolean
+          file_count?: number
+          id?: string
+          prdn_dt?: string | null
+          prdn_nst_regist_no?: string | null
+          search_id?: string
+          title?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "documents_search_id_fkey"
+            columns: ["search_id"]
+            isOneToOne: false
+            referencedRelation: "searches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      searches: {
+        Row: {
+          created_at: string
+          end_date: string
+          id: string
+          instt_nm: string
+          start_date: string
+          total_count: number
+        }
+        Insert: {
+          created_at?: string
+          end_date: string
+          id?: string
+          instt_nm: string
+          start_date: string
+          total_count?: number
+        }
+        Update: {
+          created_at?: string
+          end_date?: string
+          id?: string
+          instt_nm?: string
+          start_date?: string
+          total_count?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

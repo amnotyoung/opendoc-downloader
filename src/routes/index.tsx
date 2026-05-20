@@ -1,7 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
 import { format, subMonths, parse, isValid } from "date-fns";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, Loader2 } from "lucide-react";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,8 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { addHistory } from "@/lib/search-history";
+import { searchDocuments } from "@/lib/search-documents.functions";
+import { supabase } from "@/integrations/supabase/client";
 
 const searchSchema = z.object({
   agency: z.string().optional(),
@@ -54,6 +57,8 @@ type Row = {
   department: string;
   producedAt: string;
   fileCount: number;
+  prdn_dt: string;
+  prdn_nst_regist_no: string;
 };
 
 function parseDate(s?: string): Date | undefined {
@@ -65,6 +70,7 @@ function parseDate(s?: string): Date | undefined {
 function SearchPage() {
   const search = Route.useSearch();
   const navigate = useNavigate();
+  const searchFn = useServerFn(searchDocuments);
 
   const defaultStart = useMemo(() => subMonths(new Date(), 6), []);
   const defaultEnd = useMemo(() => new Date(), []);
@@ -80,27 +86,91 @@ function SearchPage() {
   const [results, setResults] = useState<Row[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [isSearching, setIsSearching] = useState(false);
+  const [statusText, setStatusText] = useState("대기 중");
+  const [notice, setNotice] = useState<string | null>(null);
 
-  function runSearch() {
+  async function runSearch() {
     if (!agency.trim() || !startDate || !endDate) return;
-    const rows: Row[] = []; // 백엔드 미연결 — P1
-    setResults(rows);
+    const instt = agency.trim();
+    const sd = format(startDate, "yyyyMMdd");
+    const ed = format(endDate, "yyyyMMdd");
+
+    setIsSearching(true);
+    setStatusText("검색 중…");
+    setNotice(null);
+    setResults([]);
     setSelected(new Set());
     setHasSearched(true);
-    addHistory({
-      agency: agency.trim(),
-      startDate: format(startDate, "yyyy-MM-dd"),
-      endDate: format(endDate, "yyyy-MM-dd"),
-      resultCount: rows.length,
-    });
+
+    try {
+      const res = await searchFn({
+        data: { insttNm: instt, startDate: sd, endDate: ed },
+      });
+
+      const items = res.items ?? [];
+      const rows: Row[] = items.map((it, idx) => ({
+        id: `${it.prdn_nst_regist_no || "row"}-${idx}`,
+        title: it.title,
+        department: it.dept,
+        producedAt: it.doc_date,
+        fileCount: 0,
+        prdn_dt: it.prdn_dt,
+        prdn_nst_regist_no: it.prdn_nst_regist_no,
+      }));
+      setResults(rows);
+
+      // searches insert
+      const { data: searchRow, error: sErr } = await supabase
+        .from("searches")
+        .insert({
+          instt_nm: instt,
+          start_date: sd,
+          end_date: ed,
+          total_count: rows.length,
+        })
+        .select()
+        .single();
+
+      if (!sErr && searchRow && rows.length > 0) {
+        const payload = items.map((it) => ({
+          search_id: searchRow.id,
+          title: it.title,
+          dept: it.dept,
+          doc_date: it.doc_date,
+          prdn_dt: it.prdn_dt,
+          prdn_nst_regist_no: it.prdn_nst_regist_no,
+          file_count: 0,
+        }));
+        await supabase.from("documents").insert(payload);
+      }
+
+      addHistory({
+        agency: instt,
+        startDate: format(startDate, "yyyy-MM-dd"),
+        endDate: format(endDate, "yyyy-MM-dd"),
+        resultCount: rows.length,
+      });
+
+      if (res.error || rows.length === 0) {
+        setNotice("검색 결과가 없거나 일시적으로 가져올 수 없습니다");
+        setStatusText("완료");
+      } else {
+        setStatusText(`${rows.length}건 수신`);
+      }
+    } catch (e) {
+      setNotice("검색 결과가 없거나 일시적으로 가져올 수 없습니다");
+      setStatusText("오류");
+      console.error(e);
+    } finally {
+      setIsSearching(false);
+    }
   }
 
   // 기록에서 들어온 경우 자동 검색
   useEffect(() => {
     if (search.agency && search.from && search.to) {
-      setHasSearched(true);
-      setResults([]);
-      setSelected(new Set());
+      void runSearch();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search.t]);
@@ -142,19 +212,20 @@ function SearchPage() {
               placeholder="한국국제협력단"
               value={agency}
               onChange={(e) => setAgency(e.target.value)}
+              disabled={isSearching}
             />
           </div>
           <div className="space-y-2">
             <Label>시작일</Label>
-            <DateField date={startDate} onChange={setStartDate} />
+            <DateField date={startDate} onChange={setStartDate} disabled={isSearching} />
           </div>
           <div className="space-y-2">
             <Label>종료일</Label>
-            <DateField date={endDate} onChange={setEndDate} />
+            <DateField date={endDate} onChange={setEndDate} disabled={isSearching} />
           </div>
           <Button
+            disabled={isSearching || !agency.trim() || !startDate || !endDate}
             onClick={() => {
-              runSearch();
               if (agency.trim() && startDate && endDate) {
                 navigate({
                   to: "/",
@@ -168,6 +239,7 @@ function SearchPage() {
               }
             }}
           >
+            {isSearching && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             검색
           </Button>
         </div>
@@ -183,11 +255,8 @@ function SearchPage() {
               : "검색 조건을 입력하고 검색을 눌러주세요."}
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-xs text-muted-foreground">대기 중</span>
-            <Button
-              variant="default"
-              disabled={selected.size === 0}
-            >
+            <span className="text-xs text-muted-foreground">{statusText}</span>
+            <Button variant="default" disabled={selected.size === 0}>
               선택 항목 ZIP 다운로드
             </Button>
           </div>
@@ -219,9 +288,11 @@ function SearchPage() {
                     colSpan={5}
                     className="h-32 text-center text-sm text-muted-foreground"
                   >
-                    {hasSearched
-                      ? "검색 결과가 없습니다"
-                      : "—"}
+                    {isSearching
+                      ? "검색 중…"
+                      : hasSearched
+                        ? (notice ?? "검색 결과가 없습니다")
+                        : "—"}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -251,15 +322,18 @@ function SearchPage() {
 function DateField({
   date,
   onChange,
+  disabled,
 }: {
   date: Date | undefined;
   onChange: (d: Date | undefined) => void;
+  disabled?: boolean;
 }) {
   return (
     <Popover>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
+          disabled={disabled}
           className={cn(
             "w-full justify-start text-left font-normal",
             !date && "text-muted-foreground",

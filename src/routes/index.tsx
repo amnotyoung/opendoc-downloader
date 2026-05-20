@@ -33,6 +33,7 @@ const searchSchema = z.object({
   agency: z.string().optional(),
   from: z.string().optional(),
   to: z.string().optional(),
+  kwd: z.string().optional(),
   t: z.string().optional(),
 });
 

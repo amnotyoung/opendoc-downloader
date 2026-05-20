@@ -84,12 +84,21 @@ function SearchPage() {
     parseDate(search.to) ?? defaultEnd,
   );
 
+  const [kwd, setKwd] = useState(search.kwd ?? "");
+
   const [results, setResults] = useState<Row[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isSearching, setIsSearching] = useState(false);
   const [statusText, setStatusText] = useState("대기 중");
   const [notice, setNotice] = useState<string | null>(null);
+  const [summary, setSummary] = useState<{
+    agency: string;
+    from: string;
+    to: string;
+    kwd: string;
+    total: number;
+  } | null>(null);
 
   async function runSearch() {
     if (!agency.trim() || !startDate || !endDate) return;

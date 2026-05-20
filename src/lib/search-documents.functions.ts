@@ -83,7 +83,8 @@ function extractResultJson(html: string): { rtnTotal?: number; rtnList?: any[] }
 export const searchDocuments = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => inputSchema.parse(input))
   .handler(async ({ data }) => {
-    const { insttNm, startDate, endDate } = data;
+    const { insttNm, startDate, endDate, titleKwd } = data;
+    const kwd = titleKwd?.trim();
     const jar: CookieJar = new Map();
     const items: Doc[] = [];
 
@@ -120,6 +121,7 @@ export const searchDocuments = createServerFn({ method: "POST" })
           viewPage: String(page),
           sort: "d",
         });
+        if (kwd) qs.set("kwd", kwd);
         const url = `${LIST_URL}?${qs.toString()}`;
         const res = await fetch(url, {
           method: "GET",

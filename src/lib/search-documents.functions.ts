@@ -63,6 +63,7 @@ const inputSchema = z.object({
   insttNm: z.string().min(1).max(200),
   startDate: z.string().regex(/^\d{8}$/),
   endDate: z.string().regex(/^\d{8}$/),
+  titleKwd: z.string().max(200).optional(),
 });
 
 function sleep(ms: number) {

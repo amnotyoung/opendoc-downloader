@@ -33,6 +33,7 @@ const searchSchema = z.object({
   agency: z.string().optional(),
   from: z.string().optional(),
   to: z.string().optional(),
+  kwd: z.string().optional(),
   t: z.string().optional(),
 });
 
@@ -83,18 +84,28 @@ function SearchPage() {
     parseDate(search.to) ?? defaultEnd,
   );
 
+  const [kwd, setKwd] = useState(search.kwd ?? "");
+
   const [results, setResults] = useState<Row[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isSearching, setIsSearching] = useState(false);
   const [statusText, setStatusText] = useState("대기 중");
   const [notice, setNotice] = useState<string | null>(null);
+  const [summary, setSummary] = useState<{
+    agency: string;
+    from: string;
+    to: string;
+    kwd: string;
+    total: number;
+  } | null>(null);
 
   async function runSearch() {
     if (!agency.trim() || !startDate || !endDate) return;
     const instt = agency.trim();
     const sd = format(startDate, "yyyyMMdd");
     const ed = format(endDate, "yyyyMMdd");
+    const kwdTrim = kwd.trim();
 
     setIsSearching(true);
     setStatusText("검색 중…");
@@ -105,7 +116,12 @@ function SearchPage() {
 
     try {
       const res = await searchFn({
-        data: { insttNm: instt, startDate: sd, endDate: ed },
+        data: {
+          insttNm: instt,
+          startDate: sd,
+          endDate: ed,
+          ...(kwdTrim ? { titleKwd: kwdTrim } : {}),
+        },
       });
 
       const items = res.items ?? [];
@@ -119,6 +135,13 @@ function SearchPage() {
         prdn_nst_regist_no: it.prdn_nst_regist_no,
       }));
       setResults(rows);
+      setSummary({
+        agency: instt,
+        from: format(startDate, "yyyy-MM-dd"),
+        to: format(endDate, "yyyy-MM-dd"),
+        kwd: kwdTrim,
+        total: rows.length,
+      });
 
       // searches insert
       const { data: searchRow, error: sErr } = await supabase
@@ -204,7 +227,7 @@ function SearchPage() {
       </div>
 
       <Card className="p-6">
-        <div className="grid gap-4 md:grid-cols-[2fr_1fr_1fr_auto] md:items-end">
+        <div className="grid gap-4 md:grid-cols-[1.5fr_1.5fr_1fr_1fr_auto] md:items-end">
           <div className="space-y-2">
             <Label htmlFor="agency">기관명</Label>
             <Input
@@ -212,6 +235,16 @@ function SearchPage() {
               placeholder="한국국제협력단"
               value={agency}
               onChange={(e) => setAgency(e.target.value)}
+              disabled={isSearching}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="kwd">제목 키워드(선택)</Label>
+            <Input
+              id="kwd"
+              placeholder="예: 위임전결 / 비워두면 전체"
+              value={kwd}
+              onChange={(e) => setKwd(e.target.value)}
               disabled={isSearching}
             />
           </div>
@@ -227,12 +260,14 @@ function SearchPage() {
             disabled={isSearching || !agency.trim() || !startDate || !endDate}
             onClick={() => {
               if (agency.trim() && startDate && endDate) {
+                const k = kwd.trim();
                 navigate({
                   to: "/",
                   search: {
                     agency: agency.trim(),
                     from: format(startDate, "yyyy-MM-dd"),
                     to: format(endDate, "yyyy-MM-dd"),
+                    ...(k ? { kwd: k } : {}),
                     t: String(Date.now()),
                   },
                 });
@@ -245,7 +280,19 @@ function SearchPage() {
         </div>
       </Card>
 
+
       <Card className="mt-6 p-6">
+        {summary && hasSearched && !isSearching && (
+          <div className="mb-3 text-sm text-foreground">
+            기관: <span className="font-medium">{summary.agency}</span> · 기간:{" "}
+            <span className="font-medium">
+              {summary.from} ~ {summary.to}
+            </span>{" "}
+            · 키워드:{" "}
+            <span className="font-medium">{summary.kwd || "(없음)"}</span> · 총{" "}
+            <span className="font-medium">{summary.total}</span>건
+          </div>
+        )}
         <div className="mb-4 flex items-center justify-between">
           <div className="text-sm text-muted-foreground">
             {hasSearched
@@ -261,6 +308,7 @@ function SearchPage() {
             </Button>
           </div>
         </div>
+
 
         <div className="rounded-md border border-border">
           <Table>

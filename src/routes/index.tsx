@@ -105,6 +105,7 @@ function SearchPage() {
     const instt = agency.trim();
     const sd = format(startDate, "yyyyMMdd");
     const ed = format(endDate, "yyyyMMdd");
+    const kwdTrim = kwd.trim();
 
     setIsSearching(true);
     setStatusText("검색 중…");
@@ -115,12 +116,32 @@ function SearchPage() {
 
     try {
       const res = await searchFn({
-        data: { insttNm: instt, startDate: sd, endDate: ed },
+        data: {
+          insttNm: instt,
+          startDate: sd,
+          endDate: ed,
+          ...(kwdTrim ? { titleKwd: kwdTrim } : {}),
+        },
       });
 
       const items = res.items ?? [];
       const rows: Row[] = items.map((it, idx) => ({
         id: `${it.prdn_nst_regist_no || "row"}-${idx}`,
+        title: it.title,
+        department: it.dept,
+        producedAt: it.doc_date,
+        fileCount: 0,
+        prdn_dt: it.prdn_dt,
+        prdn_nst_regist_no: it.prdn_nst_regist_no,
+      }));
+      setResults(rows);
+      setSummary({
+        agency: instt,
+        from: format(startDate, "yyyy-MM-dd"),
+        to: format(endDate, "yyyy-MM-dd"),
+        kwd: kwdTrim,
+        total: rows.length,
+      });
         title: it.title,
         department: it.dept,
         producedAt: it.doc_date,

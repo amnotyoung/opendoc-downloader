@@ -282,6 +282,17 @@ function SearchPage() {
 
 
       <Card className="mt-6 p-6">
+        {summary && hasSearched && !isSearching && (
+          <div className="mb-3 text-sm text-foreground">
+            기관: <span className="font-medium">{summary.agency}</span> · 기간:{" "}
+            <span className="font-medium">
+              {summary.from} ~ {summary.to}
+            </span>{" "}
+            · 키워드:{" "}
+            <span className="font-medium">{summary.kwd || "(없음)"}</span> · 총{" "}
+            <span className="font-medium">{summary.total}</span>건
+          </div>
+        )}
         <div className="mb-4 flex items-center justify-between">
           <div className="text-sm text-muted-foreground">
             {hasSearched
@@ -297,6 +308,7 @@ function SearchPage() {
             </Button>
           </div>
         </div>
+
 
         <div className="rounded-md border border-border">
           <Table>

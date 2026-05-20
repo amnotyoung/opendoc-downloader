@@ -142,14 +142,6 @@ function SearchPage() {
         kwd: kwdTrim,
         total: rows.length,
       });
-        title: it.title,
-        department: it.dept,
-        producedAt: it.doc_date,
-        fileCount: 0,
-        prdn_dt: it.prdn_dt,
-        prdn_nst_regist_no: it.prdn_nst_regist_no,
-      }));
-      setResults(rows);
 
       // searches insert
       const { data: searchRow, error: sErr } = await supabase

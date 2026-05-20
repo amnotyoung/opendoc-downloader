@@ -227,7 +227,7 @@ function SearchPage() {
       </div>
 
       <Card className="p-6">
-        <div className="grid gap-4 md:grid-cols-[2fr_1fr_1fr_auto] md:items-end">
+        <div className="grid gap-4 md:grid-cols-[1.5fr_1.5fr_1fr_1fr_auto] md:items-end">
           <div className="space-y-2">
             <Label htmlFor="agency">기관명</Label>
             <Input
@@ -235,6 +235,16 @@ function SearchPage() {
               placeholder="한국국제협력단"
               value={agency}
               onChange={(e) => setAgency(e.target.value)}
+              disabled={isSearching}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="kwd">제목 키워드(선택)</Label>
+            <Input
+              id="kwd"
+              placeholder="예: 위임전결 / 비워두면 전체"
+              value={kwd}
+              onChange={(e) => setKwd(e.target.value)}
               disabled={isSearching}
             />
           </div>
@@ -250,12 +260,14 @@ function SearchPage() {
             disabled={isSearching || !agency.trim() || !startDate || !endDate}
             onClick={() => {
               if (agency.trim() && startDate && endDate) {
+                const k = kwd.trim();
                 navigate({
                   to: "/",
                   search: {
                     agency: agency.trim(),
                     from: format(startDate, "yyyy-MM-dd"),
                     to: format(endDate, "yyyy-MM-dd"),
+                    ...(k ? { kwd: k } : {}),
                     t: String(Date.now()),
                   },
                 });
@@ -267,6 +279,7 @@ function SearchPage() {
           </Button>
         </div>
       </Card>
+
 
       <Card className="mt-6 p-6">
         <div className="mb-4 flex items-center justify-between">

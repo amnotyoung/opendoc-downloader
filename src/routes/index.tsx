@@ -27,10 +27,7 @@ import {
 import { cn } from "@/lib/utils";
 import { addHistory } from "@/lib/search-history";
 import { searchDocuments } from "@/lib/search-documents.functions";
-import { downloadDocument } from "@/lib/download-document.functions";
 import { supabase } from "@/integrations/supabase/client";
-import JSZip from "jszip";
-
 
 const searchSchema = z.object({
   agency: z.string().optional(),
@@ -57,7 +54,6 @@ export const Route = createFileRoute("/")({
 
 type Row = {
   id: string;
-  dbId?: string;
   title: string;
   department: string;
   producedAt: string;
@@ -65,7 +61,6 @@ type Row = {
   prdn_dt: string;
   prdn_nst_regist_no: string;
 };
-
 
 function parseDate(s?: string): Date | undefined {
   if (!s) return undefined;
@@ -104,10 +99,6 @@ function SearchPage() {
     kwd: string;
     total: number;
   } | null>(null);
-  const [isDownloading, setIsDownloading] = useState(false);
-  const downloadFn = useServerFn(downloadDocument);
-
-
 
   async function runSearch() {
     if (!agency.trim() || !startDate || !endDate) return;
@@ -174,16 +165,8 @@ function SearchPage() {
           prdn_nst_regist_no: it.prdn_nst_regist_no,
           file_count: 0,
         }));
-        const { data: inserted } = await supabase
-          .from("documents")
-          .insert(payload)
-          .select("id");
-        if (inserted && inserted.length === rows.length) {
-          const withIds = rows.map((r, i) => ({ ...r, dbId: inserted[i].id }));
-          setResults(withIds);
-        }
+        await supabase.from("documents").insert(payload);
       }
-
 
       addHistory({
         agency: instt,
@@ -204,85 +187,8 @@ function SearchPage() {
       console.error(e);
     } finally {
       setIsSearching(false);
-  }
-
-  async function runDownload() {
-    if (selected.size === 0) {
-      setNotice("다운로드할 문서를 선택하세요");
-      return;
-    }
-    if (!summary) return;
-    const targets = results.filter((r) => selected.has(r.id));
-    setIsDownloading(true);
-    setNotice(null);
-    const zip = new JSZip();
-    let okCount = 0;
-    const usedNames = new Set<string>();
-
-    try {
-      for (let i = 0; i < targets.length; i++) {
-        const r = targets[i];
-        setStatusText(`${i + 1}/${targets.length} 처리 중`);
-        try {
-          const res = await downloadFn({
-            data: {
-              prdnDt: r.prdn_dt,
-              prdnNstRgstNo: r.prdn_nst_regist_no,
-            },
-          });
-          const files = res.files ?? [];
-          if (files.length > 0) {
-            const folderBase = (r.title || `doc_${i + 1}`).replace(/[\\/:*?"<>|]/g, "_").slice(0, 80);
-            let folder = folderBase;
-            let n = 2;
-            while (usedNames.has(folder)) folder = `${folderBase}_${n++}`;
-            usedNames.add(folder);
-            for (const f of files) {
-              const safeName = f.fileName.replace(/[\\/:*?"<>|]/g, "_");
-              zip.file(`${folder}/${safeName}`, f.contentBase64, { base64: true });
-            }
-            okCount++;
-            if (r.dbId) {
-              await supabase
-                .from("documents")
-                .update({ downloaded: true, file_count: files.length })
-                .eq("id", r.dbId);
-            }
-            setResults((prev) =>
-              prev.map((row) =>
-                row.id === r.id ? { ...row, fileCount: files.length } : row,
-              ),
-            );
-          }
-        } catch (e) {
-          console.error(e);
-        }
-        if (i < targets.length - 1) await new Promise((r) => setTimeout(r, 400));
-      }
-
-      if (okCount === 0) {
-        setNotice("다운로드 가능한 파일이 없습니다");
-        setStatusText("완료");
-        return;
-      }
-
-      const blob = await zip.generateAsync({ type: "blob" });
-      const zipName = `${summary.agency}_${summary.from}_${summary.to}.zip`;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = zipName;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      setStatusText(`완료 (${okCount}건)`);
-    } finally {
-      setIsDownloading(false);
     }
   }
-
-
 
   // 기록에서 들어온 경우 자동 검색
   useEffect(() => {
@@ -397,15 +303,9 @@ function SearchPage() {
           </div>
           <div className="flex items-center gap-3">
             <span className="text-xs text-muted-foreground">{statusText}</span>
-            <Button
-              variant="default"
-              disabled={isDownloading || isSearching}
-              onClick={runDownload}
-            >
-              {isDownloading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            <Button variant="default" disabled={selected.size === 0}>
               선택 항목 ZIP 다운로드
             </Button>
-
           </div>
         </div>
 
@@ -502,5 +402,4 @@ function DateField({
       </PopoverContent>
     </Popover>
   );
-}
 }

@@ -174,8 +174,16 @@ function SearchPage() {
           prdn_nst_regist_no: it.prdn_nst_regist_no,
           file_count: 0,
         }));
-        await supabase.from("documents").insert(payload);
+        const { data: inserted } = await supabase
+          .from("documents")
+          .insert(payload)
+          .select("id");
+        if (inserted && inserted.length === rows.length) {
+          const withIds = rows.map((r, i) => ({ ...r, dbId: inserted[i].id }));
+          setResults(withIds);
+        }
       }
+
 
       addHistory({
         agency: instt,

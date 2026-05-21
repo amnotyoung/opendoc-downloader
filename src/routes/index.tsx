@@ -203,53 +203,68 @@ function SearchPage() {
     const targets = results.filter((r) => selected.has(r.id));
     setIsDownloading(true);
     setNotice(null);
+    setDlProgress(`${targets.length}건 처리 중…`);
+
     const zip = new JSZip();
     let okDocCount = 0;
     let totalFiles = 0;
     const updateIds: string[] = [];
+    const targetMap = new Map(targets.map((t) => [t.prdn_nst_regist_no, t]));
 
-    for (let i = 0; i < targets.length; i++) {
-      const r = targets[i];
-      setDlProgress(`${i + 1}/${targets.length} 처리 중`);
+    // 30개씩 배치로 끊어 서버 함수에 한 번에 보냄 (워밍업 1회/배치)
+    const BATCH = 30;
+    const batches: { prdnDt: string; prdnNstRgstNo: string }[][] = [];
+    for (let i = 0; i < targets.length; i += BATCH) {
+      batches.push(
+        targets.slice(i, i + BATCH).map((r) => ({
+          prdnDt: r.prdn_dt,
+          prdnNstRgstNo: r.prdn_nst_regist_no,
+        })),
+      );
+    }
+
+    let processed = 0;
+    for (let bi = 0; bi < batches.length; bi++) {
+      const batch = batches[bi];
+      setDlProgress(
+        batches.length > 1
+          ? `배치 ${bi + 1}/${batches.length} · ${processed}/${targets.length}건 처리`
+          : `${targets.length}건 처리 중…`,
+      );
       try {
-        const res = await downloadFn({
-          data: {
-            prdnDt: r.prdn_dt,
-            prdnNstRgstNo: r.prdn_nst_regist_no,
-          },
-        });
-        const files = res?.files ?? [];
-        if (files.length > 0) {
-          const safeTitle = (r.title || "untitled")
+        const res = await downloadFn({ data: { docs: batch } });
+        const docResults = res?.results ?? [];
+        for (const dr of docResults) {
+          const t = targetMap.get(dr.prdnNstRgstNo);
+          if (!t) continue;
+          const files = dr.files ?? [];
+          if (files.length === 0) continue;
+
+          const safeTitle = (t.title || "untitled")
             .replace(/[\\/:*?"<>|]/g, "_")
             .slice(0, 50);
-          const prefix = `${r.producedAt}_${r.prdn_nst_regist_no}_${safeTitle}`;
+          const prefix = `${t.producedAt}_${t.prdn_nst_regist_no}_${safeTitle}`;
           for (let j = 0; j < files.length; j++) {
             const f = files[j];
             const suffix = files.length > 1 ? `__${j}` : "";
-            const ext = f.fileName.includes(".")
-              ? f.fileName.slice(f.fileName.lastIndexOf("."))
-              : "";
             const baseNm = f.fileName.replace(/[\\/:*?"<>|]/g, "_");
-            zip.file(`${prefix}${suffix}__${baseNm}${ext ? "" : ""}`, f.contentBase64, {
+            zip.file(`${prefix}${suffix}__${baseNm}`, f.contentBase64, {
               base64: true,
             });
           }
           okDocCount++;
           totalFiles += files.length;
-          updateIds.push(r.prdn_nst_regist_no);
+          updateIds.push(t.prdn_nst_regist_no);
           setResults((prev) =>
             prev.map((row) =>
-              row.id === r.id ? { ...row, fileCount: files.length } : row,
+              row.id === t.id ? { ...row, fileCount: files.length } : row,
             ),
           );
         }
       } catch (e) {
-        console.error("download failed", r.title, e);
+        console.error("batch download failed", e);
       }
-      if (i < targets.length - 1) {
-        await new Promise((res) => setTimeout(res, 400));
-      }
+      processed += batch.length;
     }
 
     if (totalFiles === 0) {

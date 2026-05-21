@@ -27,7 +27,10 @@ import {
 import { cn } from "@/lib/utils";
 import { addHistory } from "@/lib/search-history";
 import { searchDocuments } from "@/lib/search-documents.functions";
+import { downloadDocument } from "@/lib/download-document.functions";
 import { supabase } from "@/integrations/supabase/client";
+import JSZip from "jszip";
+
 
 const searchSchema = z.object({
   agency: z.string().optional(),

@@ -104,6 +104,10 @@ function SearchPage() {
     kwd: string;
     total: number;
   } | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const downloadFn = useServerFn(downloadDocument);
+
+
 
   async function runSearch() {
     if (!agency.trim() || !startDate || !endDate) return;

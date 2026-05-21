@@ -282,7 +282,7 @@ function SearchPage() {
     }
   }
 
-  }
+
 
   // 기록에서 들어온 경우 자동 검색
   useEffect(() => {

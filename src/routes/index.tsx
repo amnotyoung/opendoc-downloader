@@ -320,9 +320,15 @@ function SearchPage() {
           </div>
           <div className="flex items-center gap-3">
             <span className="text-xs text-muted-foreground">{statusText}</span>
-            <Button variant="default" disabled={selected.size === 0}>
+            <Button
+              variant="default"
+              disabled={isDownloading || isSearching}
+              onClick={runDownload}
+            >
+              {isDownloading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               선택 항목 ZIP 다운로드
             </Button>
+
           </div>
         </div>
 

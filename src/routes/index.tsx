@@ -57,6 +57,7 @@ export const Route = createFileRoute("/")({
 
 type Row = {
   id: string;
+  dbId?: string;
   title: string;
   department: string;
   producedAt: string;
@@ -64,6 +65,7 @@ type Row = {
   prdn_dt: string;
   prdn_nst_regist_no: string;
 };
+
 
 function parseDate(s?: string): Date | undefined {
   if (!s) return undefined;

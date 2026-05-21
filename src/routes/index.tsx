@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { format, subMonths, parse, isValid } from "date-fns";
 import { CalendarIcon, Loader2 } from "lucide-react";
 import { z } from "zod";
+import JSZip from "jszip";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +28,7 @@ import {
 import { cn } from "@/lib/utils";
 import { addHistory } from "@/lib/search-history";
 import { searchDocuments } from "@/lib/search-documents.functions";
+import { downloadDocument } from "@/lib/download-document.functions";
 import { supabase } from "@/integrations/supabase/client";
 
 const searchSchema = z.object({
@@ -72,6 +74,7 @@ function SearchPage() {
   const search = Route.useSearch();
   const navigate = useNavigate();
   const searchFn = useServerFn(searchDocuments);
+  const downloadFn = useServerFn(downloadDocument);
 
   const defaultStart = useMemo(() => subMonths(new Date(), 6), []);
   const defaultEnd = useMemo(() => new Date(), []);
@@ -90,6 +93,8 @@ function SearchPage() {
   const [hasSearched, setHasSearched] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isSearching, setIsSearching] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [dlProgress, setDlProgress] = useState("");
   const [statusText, setStatusText] = useState("대기 중");
   const [notice, setNotice] = useState<string | null>(null);
   const [summary, setSummary] = useState<{
@@ -188,6 +193,101 @@ function SearchPage() {
     } finally {
       setIsSearching(false);
     }
+  }
+
+  async function runDownload() {
+    if (selected.size === 0) {
+      setNotice("다운로드할 문서를 선택하세요");
+      return;
+    }
+    const targets = results.filter((r) => selected.has(r.id));
+    setIsDownloading(true);
+    setNotice(null);
+    const zip = new JSZip();
+    let okDocCount = 0;
+    let totalFiles = 0;
+    const updateIds: string[] = [];
+
+    for (let i = 0; i < targets.length; i++) {
+      const r = targets[i];
+      setDlProgress(`${i + 1}/${targets.length} 처리 중`);
+      try {
+        const res = await downloadFn({
+          data: {
+            prdnDt: r.prdn_dt,
+            prdnNstRgstNo: r.prdn_nst_regist_no,
+          },
+        });
+        const files = res?.files ?? [];
+        if (files.length > 0) {
+          const safeTitle = (r.title || "untitled")
+            .replace(/[\\/:*?"<>|]/g, "_")
+            .slice(0, 50);
+          const prefix = `${r.producedAt}_${r.prdn_nst_regist_no}_${safeTitle}`;
+          for (let j = 0; j < files.length; j++) {
+            const f = files[j];
+            const suffix = files.length > 1 ? `__${j}` : "";
+            const ext = f.fileName.includes(".")
+              ? f.fileName.slice(f.fileName.lastIndexOf("."))
+              : "";
+            const baseNm = f.fileName.replace(/[\\/:*?"<>|]/g, "_");
+            zip.file(`${prefix}${suffix}__${baseNm}${ext ? "" : ""}`, f.contentBase64, {
+              base64: true,
+            });
+          }
+          okDocCount++;
+          totalFiles += files.length;
+          updateIds.push(r.prdn_nst_regist_no);
+          setResults((prev) =>
+            prev.map((row) =>
+              row.id === r.id ? { ...row, fileCount: files.length } : row,
+            ),
+          );
+        }
+      } catch (e) {
+        console.error("download failed", r.title, e);
+      }
+      if (i < targets.length - 1) {
+        await new Promise((res) => setTimeout(res, 400));
+      }
+    }
+
+    if (totalFiles === 0) {
+      setDlProgress("");
+      setIsDownloading(false);
+      setNotice("받을 수 있는 본문파일이 없습니다");
+      return;
+    }
+
+    setDlProgress("ZIP 생성 중…");
+    const blob = await zip.generateAsync({ type: "blob" });
+    const ag = (summary?.agency ?? "result").replace(/[\\/:*?"<>|]/g, "_");
+    const sd = summary?.from?.replace(/-/g, "") ?? "";
+    const ed = summary?.to?.replace(/-/g, "") ?? "";
+    const fname = `${ag}_${sd}_${ed}.zip`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fname;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    // documents 테이블 downloaded 플래그 업데이트 (best-effort)
+    if (updateIds.length > 0) {
+      try {
+        await supabase
+          .from("documents")
+          .update({ downloaded: true })
+          .in("prdn_nst_regist_no", updateIds);
+      } catch (e) {
+        console.error("documents update failed", e);
+      }
+    }
+
+    setDlProgress(`완료: ${okDocCount}/${targets.length}건 · 파일 ${totalFiles}개`);
+    setIsDownloading(false);
   }
 
   // 기록에서 들어온 경우 자동 검색
@@ -302,8 +402,15 @@ function SearchPage() {
               : "검색 조건을 입력하고 검색을 눌러주세요."}
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-xs text-muted-foreground">{statusText}</span>
-            <Button variant="default" disabled={selected.size === 0}>
+            <span className="text-xs text-muted-foreground">
+              {isDownloading ? dlProgress : dlProgress || statusText}
+            </span>
+            <Button
+              variant="default"
+              disabled={selected.size === 0 || isDownloading || isSearching}
+              onClick={runDownload}
+            >
+              {isDownloading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               선택 항목 ZIP 다운로드
             </Button>
           </div>

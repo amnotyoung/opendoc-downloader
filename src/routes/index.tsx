@@ -503,4 +503,3 @@ function DateField({
     </Popover>
   );
 }
-}

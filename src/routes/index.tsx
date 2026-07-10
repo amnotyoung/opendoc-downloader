@@ -26,7 +26,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { addHistory } from "@/lib/search-history";
 import { searchDocuments } from "@/lib/search-documents.functions";
 import { downloadDocument } from "@/lib/download-document.functions";
 import { supabase } from "@/integrations/supabase/client";
@@ -148,21 +147,19 @@ function SearchPage() {
         total: rows.length,
       });
 
-      // searches insert
-      const { data: searchRow, error: sErr } = await supabase
-        .from("searches")
-        .insert({
-          instt_nm: instt,
-          start_date: sd,
-          end_date: ed,
-          total_count: rows.length,
-        })
-        .select()
-        .single();
+      // searches insert — RLS 잠금(append 전용, 읽기 불가)이라 id를 클라이언트에서 생성
+      const searchId = crypto.randomUUID();
+      const { error: sErr } = await supabase.from("searches").insert({
+        id: searchId,
+        instt_nm: instt,
+        start_date: sd,
+        end_date: ed,
+        total_count: rows.length,
+      });
 
-      if (!sErr && searchRow && rows.length > 0) {
+      if (!sErr && rows.length > 0) {
         const payload = items.map((it) => ({
-          search_id: searchRow.id,
+          search_id: searchId,
           title: it.title,
           dept: it.dept,
           doc_date: it.doc_date,
@@ -172,13 +169,6 @@ function SearchPage() {
         }));
         await supabase.from("documents").insert(payload);
       }
-
-      addHistory({
-        agency: instt,
-        startDate: format(startDate, "yyyy-MM-dd"),
-        endDate: format(endDate, "yyyy-MM-dd"),
-        resultCount: rows.length,
-      });
 
       if (res.error || rows.length === 0) {
         setNotice("검색 결과가 없거나 일시적으로 가져올 수 없습니다");
@@ -208,7 +198,6 @@ function SearchPage() {
     const zip = new JSZip();
     let okDocCount = 0;
     let totalFiles = 0;
-    const updateIds: string[] = [];
     const targetMap = new Map(targets.map((t) => [t.prdn_nst_regist_no, t]));
 
     // 30개씩 배치로 끊어 서버 함수에 한 번에 보냄 (워밍업 1회/배치)
@@ -254,7 +243,6 @@ function SearchPage() {
           }
           okDocCount++;
           totalFiles += files.length;
-          updateIds.push(t.prdn_nst_regist_no);
           setResults((prev) =>
             prev.map((row) =>
               row.id === t.id ? { ...row, fileCount: files.length } : row,
@@ -288,18 +276,6 @@ function SearchPage() {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-
-    // documents 테이블 downloaded 플래그 업데이트 (best-effort)
-    if (updateIds.length > 0) {
-      try {
-        await supabase
-          .from("documents")
-          .update({ downloaded: true })
-          .in("prdn_nst_regist_no", updateIds);
-      } catch (e) {
-        console.error("documents update failed", e);
-      }
-    }
 
     setDlProgress(`완료: ${okDocCount}/${targets.length}건 · 파일 ${totalFiles}개`);
     setIsDownloading(false);

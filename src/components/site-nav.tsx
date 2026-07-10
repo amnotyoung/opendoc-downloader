@@ -16,13 +16,6 @@ export function SiteNav() {
           >
             검색
           </Link>
-          <Link
-            to="/history"
-            activeProps={{ className: "bg-secondary text-foreground" }}
-            className="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:text-foreground"
-          >
-            검색 기록
-          </Link>
         </nav>
       </div>
     </header>
